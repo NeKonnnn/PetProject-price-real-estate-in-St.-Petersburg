@@ -1,176 +1,297 @@
-from aiogram import Bot, Dispatcher, executor, types
+import requests
 
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
-from aiogram.dispatcher.filters.state import StatesGroup, State
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from json import JSONDecodeError
 
-from config import TOKEN_API
+from telegram_bot.address_converter import get_address_data, YandexAPIRespondStatus
+from telegram_bot.metro_features_calculation import calculate_metro_distances
+from telegram_bot.house_age_parser import estimate_house_age
+from telegram_bot.client_states import ClientStates
+from telegram_bot.config import TOKEN_API, ML_APP_URL
+from telegram_bot.keyboards import get_reply_keyboard_markup
+from telegram_bot.messages_for_menus import (
+    text_output_for_command,
+    HELP_INFO,
+    service_not_available_respond_text,
+    format_model_response,
+    format_user_features,
+)
 
 bot = Bot(token=TOKEN_API)
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-price = '<b>Этот текст представляет собой цену. Скоро ее будет генерировать ML-модель</b>'
 
-welcome_text = """
-Бот разработан для предсказания цены недвижимости в Санкт-Петербурге
-Работать с ботом очень просто.
-Вы постепенно вводите параметры своей квартиры, а бот предсказывает ее цену на каждом шаге.
-"""
-
-start_work_text = """
-На каждом шаге будет предложено ввести значение для параметра. \n
-Чем больше параметров введете - тем точнее предсказанная цена.
-Если не знаете или не хотите вводить значение параметра,
-напишите <b>Пропустить этот параметр</b>, либо используйте соответствующую кнопку"""
-
-github_link = 'https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg'
+@dp.message_handler(commands=['start', 'restart'])
+async def start_message(message: types.Message):
+    await bot.send_message(
+        text=HELP_INFO,
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['/estimate', '/help', '/repository', '/about']),
+        parse_mode='HTML',
+    )
+    await message.delete()
+    await ClientStates.main_menu.set()
 
 
-class ClientStatesGroup(StatesGroup):
-    number_of_rooms = State()
-    total_area = State()
-    living_area = State()
-    floor = State()
-    location = State()
+@dp.message_handler(commands=list(text_output_for_command.keys()), state=ClientStates.main_menu)
+async def html_out_command(message: types.Message):
+    """Выводит информацию в виде HTML."""
+    await bot.send_message(
+        text=text_output_for_command[message.text[1:]],
+        chat_id=message.from_user.id,
+        parse_mode='HTML',
+    )
+    await message.delete()
 
 
-class Feedback(StatesGroup):
-    feedback = State()
+@dp.message_handler(commands=['estimate'], state=ClientStates.main_menu)
+async def estimate_command(message: types.Message):
+    await ClientStates.address.set()
+    await bot.send_message(
+        text='Шаг 1️⃣. Введите адрес интересующего вас дома, например: ул. Пушкина, 9.',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([])
+    )
+    await message.delete()
 
 
-start_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-start_keyboard.add(KeyboardButton('Начать работу'))
-start_keyboard.add(KeyboardButton('Репозиторий GitHub'))
-start_keyboard.add(KeyboardButton('Написать авторам'))
-
-keyboard_during_work = ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard_during_work.add(KeyboardButton('Пропустить этот параметр'))
-keyboard_during_work.add(KeyboardButton('Вернуться в главное меню'))
-
-
-@dp.message_handler(commands=['start'], state='*')
-async def command_start(message: types.Message, state: FSMContext):
-    await message.answer(text=welcome_text,
-                         reply_markup=start_keyboard)
-    await state.finish()
-
-
-@dp.message_handler(Text(equals='Вернуться в главное меню'), state='*')
-async def go_to_main_menu(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is None:
+@dp.message_handler(state=ClientStates.address)
+async def parse_address(message: types.Message, state: FSMContext):
+    respond = get_address_data(message.text)
+    if respond.status == YandexAPIRespondStatus.service_not_available:
+        await ClientStates.main_menu.set()
+        await bot.send_message(
+            text=service_not_available_respond_text,
+            chat_id=message.from_user.id,
+            reply_markup=get_reply_keyboard_markup(['/estimate', '/help', '/help', '/about'])
+        )
         return
-    await message.reply(text='Открыто главное меню',
-                        reply_markup=start_keyboard)
-    await state.finish()
 
+    if respond.status == YandexAPIRespondStatus.multiple_found:
+        await bot.send_message(
+            text='По вашему адресу найдено несколько домов. Уточните, пожалуйста, адрес.',
+            chat_id=message.from_user.id,
+            reply_markup=get_reply_keyboard_markup([])
+        )
+        return
 
-@dp.message_handler(Text(equals='Начать работу', ignore_case=True), state=None)
-async def start_work(message: types.Message) -> None:
-    await ClientStatesGroup.number_of_rooms.set()
-    await message.answer(text=start_work_text, parse_mode='HTML')
-    await message.answer("""Шаг 1️⃣. Введите число комнат""", reply_markup=keyboard_during_work)
+    if respond.status == YandexAPIRespondStatus.nothing_found:
+        await bot.send_message(
+            text='По вашему адресу дом не найден. Уточните, пожалуйста, адрес.',
+            chat_id=message.from_user.id,
+            reply_markup=get_reply_keyboard_markup([])
+        )
+        return
 
-
-@dp.message_handler(Text(equals='Репозиторий GitHub'))
-async def get_github(message: types.Message) -> None:
-    await message.answer(text=github_link)
-
-
-@dp.message_handler(Text(equals='Написать авторам'))
-async def get_feedback(message: types.Message) -> None:
-    await message.answer('Напишите отзыв/пожелание/замечание и я отправлю его авторам')
-    await Feedback.feedback.set()
-
-
-@dp.message_handler(state=ClientStatesGroup.number_of_rooms)
-async def feature1(message: types.Message, state: FSMContext):
+    await ClientStates.number_of_rooms.set()
+    await bot.send_message(
+        text=f'По указанному вами адресу найден дом. Полный адрес: {respond.formatted_address}',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([])
+    )
     async with state.proxy() as data:
-        if message.text != 'Пропустить этот параметр':
-            data['number_of_rooms'] = message.text
-            await message.answer(f'При данных параметрах оцениваем квартиру в стоимость {price} рублей', parse_mode='HTML')
-        else:
-            data['number_of_rooms'] = None
-    await ClientStatesGroup.next()
-    await message.answer(text="""Шаг 2️⃣. Введите общую площадь""", reply_markup=keyboard_during_work)
+        data['address'] = respond.formatted_address
+        data['latitude'] = respond.latitude
+        data['longitude'] = respond.longitude
+        data['building_age'] = estimate_house_age(respond.formatted_address)
+        data.update(
+            calculate_metro_distances(house_latitude=respond.latitude, house_longitude=respond.longitude)
+        )
+    await bot.send_message(
+        text="""Шаг 2️⃣. Введите число комнат""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['0 (студия)', 1, 2, 3, 4, 5, 6])
+    )
+    await message.delete()
 
 
-@dp.message_handler(state=ClientStatesGroup.total_area)
-async def feature2(message: types.Message, state: FSMContext):
+@dp.message_handler(
+    lambda message: (message.text.isdigit() and 0 <= int(message.text) < 7) or message.text == '0 (студия)',
+    state=ClientStates.number_of_rooms
+)
+async def get_number_of_rooms(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        if message.text != 'Пропустить этот параметр':
-            data['total_area'] = message.text
-            await message.answer(f'При данных параметрах оцениваем квартиру в стоимость {price} рублей', parse_mode='HTML')
-        else:
-            data['total_area'] = None
+        data['rooms'] = int(message.text) if message.text.isdigit() else 0
+    await bot.send_message(
+        text="""Шаг 3️⃣. Введите площадь квартиры""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([])
+    )
+    await ClientStates.next()
 
-    await ClientStatesGroup.next()
-    await message.answer(text="""Шаг 3️⃣. Введите жилую площадь""", reply_markup=keyboard_during_work)
+
+@dp.message_handler(state=ClientStates.number_of_rooms)
+async def retry_number_of_rooms(message: types.Message):
+    await bot.send_message(
+        text='Неверный формат числа! Введите количество комнат в квартире (от 1 до 6)',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['0 (студия)', 1, 2, 3, 4, 5, 6]),
+    )
 
 
-@dp.message_handler(state=ClientStatesGroup.living_area)
-async def feature3(message: types.Message, state: FSMContext):
+@dp.message_handler(
+    lambda message: message.text.isdigit() and 0 < int(message.text) < 500,
+    state=ClientStates.total_area
+)
+async def get_total_area(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        if message.text != 'Пропустить этот параметр':
-            data['living_area'] = message.text
-            await message.answer(f'При данных параметрах оцениваем квартиру в стоимость {price} рублей', parse_mode='HTML')
-        else:
-            data['living_area'] = None
-    await ClientStatesGroup.next()
-    await message.answer(text="""Шаг 4️⃣. Введите этаж""", reply_markup=keyboard_during_work)
+        data['total_area'] = float(message.text)
+    await bot.send_message(
+        text="""Шаг 3️⃣. Введите этаж, на котором находится квартира.""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([])
+    )
+    await ClientStates.next()
 
 
-@dp.message_handler(state=ClientStatesGroup.floor)
-async def feature4(message: types.Message, state: FSMContext):
+@dp.message_handler(state=ClientStates.total_area)
+async def retry_total_area(message: types.Message):
+    await bot.send_message(
+        text='Неверный формат числа! Введите количество кв.м. в квартире (от 1 до 500)',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([]),
+    )
+
+
+@dp.message_handler(
+    lambda message: message.text.isdigit() and 0 < int(message.text) < 50,
+    state=ClientStates.stage
+)
+async def get_floor(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        if message.text != 'Пропустить этот параметр':
-            data['floor'] = message.text
-            await message.answer(f'При данных параметрах оцениваем квартиру в стоимость {price} рублей', parse_mode='HTML')
-        else:
-            data['floor'] = None
-    await ClientStatesGroup.next()
-    await message.answer(text="""Шаг 5️⃣. Введите адрес""", reply_markup=keyboard_during_work)
+        data['stage'] = int(message.text)
+    await bot.send_message(
+        text="""Шаг 4️⃣. В квартире есть балкон/лоджия?""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет'])
+    )
+    await ClientStates.next()
 
 
-@dp.message_handler(state=ClientStatesGroup.location)
-async def feature5(message: types.Message, state: FSMContext):
+@dp.message_handler(state=ClientStates.stage)
+async def retry_floor(message: types.Message):
+    await bot.send_message(
+        text='Неверный формат числа! Введите этаж квартиры (от 1 до 50)',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup([]),
+    )
+
+
+@dp.message_handler(regexp='|'.join(['да', 'нет']), state=ClientStates.balcony)
+async def get_balcony(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        if message.text != 'Пропустить этот параметр':
-            data['location'] = message.text
-        else:
-            data['location'] = None
+        data['balcony'] = 1 if message.text == 'да' else 0
+    await bot.send_message(
+        text="""Шаг 5️⃣. Есть ли лифт в подъезде?""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет'])
+    )
+    await ClientStates.next()
 
+
+@dp.message_handler(state=ClientStates.balcony)
+async def retry_balcony(message: types.Message):
+    await bot.send_message(
+        text='Неверный вариант ответа. Есть ли балкон/лоджия в квартире (ответьте да или нет)?',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет']),
+    )
+
+
+@dp.message_handler(regexp='|'.join(['да', 'нет']), state=ClientStates.elevator)
+async def get_elevator(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        await message.answer(f"""
-Параметры сохранены \n
-Вы ввели параметры:
-Количество комнат - {data['number_of_rooms']}
-Общая площадь - {data['total_area']}
-Жилая площадь - {data['living_area']}
-Этаж - {data['floor']}
-Адрес - {data['location']}
+        if message.text == 'нет':
+            data['elevator'] = 0
+            data['largage_elevator'] = 0
+            await ClientStates.model_response.set()
+            await bot.send_message(
+                text="""Хотите ли получить примерную стоимость квартиры?""",
+                chat_id=message.from_user.id,
+                reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!'])
+            )
+            return
+        data['elevator'] = 1
 
-При заданных параметрах квартира оценивается в {price} рублей""", parse_mode='HTML', reply_markup=start_keyboard)
-    await state.finish()
+    await bot.send_message(
+        text="""Заключительный вопрос! Есть ли грузовой лифт в подъезде?""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет'])
+    )
+    await ClientStates.next()
 
 
-@dp.message_handler(state=Feedback.feedback)
-async def send_feedback(message: types.Message, state: FSMContext):
+@dp.message_handler(state=ClientStates.elevator)
+async def retry_elevator(message: types.Message):
+    await bot.send_message(
+        text='Неверный вариант ответа. Есть ли лифт в подъезде (ответьте да или нет)?',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет']),
+    )
+
+
+@dp.message_handler(regexp='|'.join(['да', 'нет']), state=ClientStates.largage_elevator)
+async def get_largage_elevator(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['feedback'] = message.text
-        await message.answer('Спасибо! Ваше сообщение отправлено')
-        await bot.send_message(chat_id='766828537', text=f"Пришло сообщение от пользователя {message.from_user.id}: {data['feedback']}")
-        await state.finish()
+        data['largage_elevator'] = 1 if message.text == 'да' else 0
+
+    await bot.send_message(
+        text="""Хотите ли получить примерную стоимость квартиры?""",
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!'])
+    )
+    await ClientStates.next()
+
+
+@dp.message_handler(state=ClientStates.largage_elevator)
+async def retry_largage_elevator(message: types.Message):
+    await bot.send_message(
+        text='Неверный вариант ответа. Есть ли грузовой лифт в подъезде (ответьте да или нет)?',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['да', 'нет']),
+    )
+
+
+@dp.message_handler(Text(equals=['Хочу узнать стоимость!', 'Да', 'да']), state=ClientStates.model_response)
+async def get_model_response(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        features_repr = format_user_features(data)
+        print(data.as_dict())
+        try:
+            features = {key: value for key, value in data.as_dict().items() if key != 'address'}
+            prices = requests.post(url=ML_APP_URL, json=features).json()
+        except JSONDecodeError:
+            await bot.send_message(
+                text=service_not_available_respond_text,
+                chat_id=message.from_user.id,
+                reply_markup=get_reply_keyboard_markup([])
+            )
+            return
+    features_repr += format_model_response(prices)
+    await bot.send_message(
+        text=features_repr,
+        chat_id=message.from_user.id,
+        parse_mode='HTML',
+    )
+    await ClientStates.main_menu.set()
+
+
+@dp.message_handler(state=ClientStates.model_response)
+async def retry_model_response(message: types.Message):
+    await bot.send_message(
+        text='Может все-таки посмотрите цену? Не зря же вы все это время потратили?)',
+        chat_id=message.from_user.id,
+        reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!']),
+    )
 
 
 async def on_startup(_):
-    print('Бот запущен. Этот текст выводится в консоль')
+    print('Бот запущен.')
 
 
 if __name__ == '__main__':
-    executor.start_polling(dispatcher=dp,
-                           skip_updates=True,
-                           on_startup=on_startup)
+    executor.start_polling(dispatcher=dp, skip_updates=True, on_startup=on_startup)
