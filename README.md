@@ -15,15 +15,9 @@
 
 ## 2. Анализ данных и построение модели 
 
-- [EDA_zero.ipynb](http://localhost:8888/notebooks/PetProject-price-real-estate-in-St.-Petersburg/notebooks/0.%20EDA_zero.ipynb) - ноутбук с самым общим анализом данных без выводов. Данный ноутбук был создан на основе надстройки pandas_profiling.
-- [EDA_first.ipynb](http://localhost:8888/notebooks/PetProject-price-real-estate-in-St.-Petersburg/notebooks/1.%20EDA_first.ipynb) - в этом нотбуке был проведен первичный анализ данных, на основе которого были сделаны следующие выводы:
-1. 
-2.
-3.
-...
-- [feature_engineering_and_preprocessing.ipynb](http://localhost:8888/notebooks/PetProject-price-real-estate-in-St.-Petersburg/notebooks/2.%20feature_engineering_and_preprocessing.ipynb). В этом ноутбуке была проведена основная часть работы, а именно были сгенерированы необходимые для построения модли новые фичи, а также была проведена очистка данных. В итоге получается датасет с уже готовыми и чистыми данными для создания модели.
-- [model.ipynb](). Модель была построена на Catboost. 
-
+Сама [модель](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/notebooks/catboost/2211_pet_proj_property_2.ipynb)
+ построена на Catboost. На тестовой выборке MAPE показало 16%, что является весьма неплохим результатом. 
+ 
 ## 3. Внедрение (создание телеграмм бота).
 
 
