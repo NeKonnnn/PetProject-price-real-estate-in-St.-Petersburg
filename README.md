@@ -21,7 +21,8 @@
 2.
 3.
 ...
-- [feature_engineering_and_preprocessing.ipynb]()
+- [feature_engineering_and_preprocessing.ipynb](http://localhost:8888/notebooks/PetProject-price-real-estate-in-St.-Petersburg/notebooks/2.%20feature_engineering_and_preprocessing.ipynb). В этом ноутбуке была проведена основная часть работы, а именно были сгенерированы необходимые для построения модли новые фичи, а также была проведена очистка данных. В итоге получается датасет с уже готовыми и чистыми данными для создания модели.
+- [model.ipynb](). Модель была построена на Catboost. 
 
 ## 3. Внедрение (создание телеграмм бота).
 
