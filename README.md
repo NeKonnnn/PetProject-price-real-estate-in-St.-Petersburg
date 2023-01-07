@@ -1,5 +1,9 @@
 # Pet-project "В_Питере_Жить"
 
+<p align="center">
+  <img width="960" height="540" src="https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/Peterss.jpg">
+</p>
+
 
 # Цель проекта:
 
@@ -19,6 +23,12 @@
  построена на Catboost. На тестовой выборке MAPE показало 16%, что является весьма неплохим результатом. 
  
 ## 3. Внедрение (создание телеграмм бота).
+
+
+<p align="center">
+  <img width="300" height="335" src="https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg">
+</p>
+
 
 
 
