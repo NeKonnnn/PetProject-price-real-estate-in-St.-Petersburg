@@ -23,9 +23,7 @@
 
 
 <p align="center">
-
-  <![qr_code](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg)>
-
+  <img width="300" height="335" src="http://www.fillmurray.com/460/300](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg">
 </p>
 
 
