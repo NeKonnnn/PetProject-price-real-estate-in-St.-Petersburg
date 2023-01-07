@@ -1,7 +1,7 @@
 # Pet-project "В_Питере_Жить"
 
 <p align="center">
-  <img width="960" height="540" src="https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg">
+  <img width="960" height="540" src="https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/Peterss.jpg">
 </p>
 
 
