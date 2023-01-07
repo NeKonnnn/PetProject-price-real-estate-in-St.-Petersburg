@@ -22,8 +22,12 @@
 ## 3. Внедрение (создание телеграмм бота).
 
 
+<p align="center">
 
-![qr_code](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg)
+  <![qr_code](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/qr_code.jpg)>
+
+</p>
+
 
 
 
