@@ -1,5 +1,6 @@
 # Pet-project "В_Питере_Жить"
 
+![preview](https://github.com/NeKonnnn/PetProject-price-real-estate-in-St.-Petersburg/blob/main/Peters.jpg)
 
 # Цель проекта:
 
