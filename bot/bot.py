@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import requests
 
 from aiogram import Bot, Dispatcher, executor, types
@@ -6,13 +8,13 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from json import JSONDecodeError
 
-from telegram_bot.address_converter import get_address_data, YandexAPIRespondStatus
-from telegram_bot.metro_features_calculation import calculate_metro_distances
-from telegram_bot.house_age_parser import estimate_house_age
-from telegram_bot.client_states import ClientStates
-from telegram_bot.config import TOKEN_API, ML_APP_URL
-from telegram_bot.keyboards import get_reply_keyboard_markup
-from telegram_bot.messages_for_menus import (
+from address_converter import get_address_data, YandexAPIRespondStatus
+from metro_features_calculation import calculate_metro_distances
+from house_age_parser import estimate_house_age
+from client_states import ClientStates
+from config import TOKEN_API, ML_APP_URL
+from keyboards import get_reply_keyboard_markup
+from messages_for_menus import (
     text_output_for_command,
     HELP_INFO,
     service_not_available_respond_text,
@@ -25,7 +27,16 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
 
-@dp.message_handler(commands=['start', 'restart'])
+def convert_text_to_float(text: str, left_num: int = 1, right_num: int = 500) -> Tuple[float, bool]:
+    """Преобразует строку в число и проверяет лежит ли оно между left_num и right_num."""
+    try:
+        number = float(text.replace(',', '.'))
+        return number, left_num < number <= right_num
+    except ValueError:
+        return 0, False
+
+
+@dp.message_handler(commands=['start', 'restart'], state='*')
 async def start_message(message: types.Message):
     await bot.send_message(
         text=HELP_INFO,
@@ -127,19 +138,19 @@ async def get_number_of_rooms(message: types.Message, state: FSMContext):
 @dp.message_handler(state=ClientStates.number_of_rooms)
 async def retry_number_of_rooms(message: types.Message):
     await bot.send_message(
-        text='Неверный формат числа! Введите количество комнат в квартире (от 1 до 6)',
+        text='Неверный формат числа! Введите количество комнат в квартире (целое число от 1 до 6)',
         chat_id=message.from_user.id,
         reply_markup=get_reply_keyboard_markup(['0 (студия)', 1, 2, 3, 4, 5, 6]),
     )
 
 
 @dp.message_handler(
-    lambda message: message.text.isdigit() and 0 < int(message.text) < 500,
+    lambda message: convert_text_to_float(message.text)[1],
     state=ClientStates.total_area
 )
 async def get_total_area(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['total_area'] = float(message.text)
+        data['total_area'] = convert_text_to_float(message.text)[0]
     await bot.send_message(
         text="""Шаг 3️⃣. Введите этаж, на котором находится квартира.""",
         chat_id=message.from_user.id,
@@ -158,7 +169,7 @@ async def retry_total_area(message: types.Message):
 
 
 @dp.message_handler(
-    lambda message: message.text.isdigit() and 0 < int(message.text) < 50,
+    lambda message: message.text.isdigit() and 0 < int(message.text) <= 50,
     state=ClientStates.stage
 )
 async def get_floor(message: types.Message, state: FSMContext):
@@ -175,7 +186,7 @@ async def get_floor(message: types.Message, state: FSMContext):
 @dp.message_handler(state=ClientStates.stage)
 async def retry_floor(message: types.Message):
     await bot.send_message(
-        text='Неверный формат числа! Введите этаж квартиры (от 1 до 50)',
+        text='Неверный формат числа! Введите этаж квартиры (целое число от 1 до 50)',
         chat_id=message.from_user.id,
         reply_markup=get_reply_keyboard_markup([]),
     )
@@ -212,7 +223,7 @@ async def get_elevator(message: types.Message, state: FSMContext):
             await bot.send_message(
                 text="""Хотите ли получить примерную стоимость квартиры?""",
                 chat_id=message.from_user.id,
-                reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!'])
+                reply_markup=get_reply_keyboard_markup(['Рассчитать стоимость!'])
             )
             return
         data['elevator'] = 1
@@ -240,9 +251,9 @@ async def get_largage_elevator(message: types.Message, state: FSMContext):
         data['largage_elevator'] = 1 if message.text == 'да' else 0
 
     await bot.send_message(
-        text="""Хотите ли получить примерную стоимость квартиры?""",
+        text="""Хотите ли рассчитать примерную стоимость квартиры?""",
         chat_id=message.from_user.id,
-        reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!'])
+        reply_markup=get_reply_keyboard_markup(['Рассчитать стоимость!'])
     )
     await ClientStates.next()
 
@@ -256,7 +267,7 @@ async def retry_largage_elevator(message: types.Message):
     )
 
 
-@dp.message_handler(Text(equals=['Хочу узнать стоимость!', 'Да', 'да']), state=ClientStates.model_response)
+@dp.message_handler(Text(equals=['Рассчитать стоимость!', 'Да', 'да']), state=ClientStates.model_response)
 async def get_model_response(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         features_repr = format_user_features(data)
@@ -276,6 +287,7 @@ async def get_model_response(message: types.Message, state: FSMContext):
         text=features_repr,
         chat_id=message.from_user.id,
         parse_mode='HTML',
+        reply_markup=get_reply_keyboard_markup(['/estimate', '/help', '/repository', '/about']),
     )
     await ClientStates.main_menu.set()
 
@@ -285,7 +297,7 @@ async def retry_model_response(message: types.Message):
     await bot.send_message(
         text='Может все-таки посмотрите цену? Не зря же вы все это время потратили?)',
         chat_id=message.from_user.id,
-        reply_markup=get_reply_keyboard_markup(['Хочу узнать стоимость!']),
+        reply_markup=get_reply_keyboard_markup(['Рассчитать стоимость!']),
     )
 
 
