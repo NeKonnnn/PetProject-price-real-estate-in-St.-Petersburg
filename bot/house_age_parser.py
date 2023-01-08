@@ -56,7 +56,7 @@ def get_house_construction_year(df: pd.DataFrame, house_number: str) -> Optional
     house_number_match = df['Адрес'].str.contains(rf'\s{house_number}\D', regex=True)
     if not any(house_number_match):
         # Если не нашли соответствие номера дома, то возвращаем средний год по улице
-        return df['Год'].mean().round().astype(int)
+        return int(df['Год'].mean().round())
     # преобразование в int нужно для дальнейшей возможности отправки словаря в json'е request'а
     return int(df[house_number_match]['Год'].mean().round())
 
@@ -71,4 +71,4 @@ def estimate_house_age(address: str) -> int:
     house_number = house_numbers[-1]
     if len(house_numbers) > 1:
         house_number = house_numbers[0]
-    return YEAR_TO_SUBTRACT_FROM - get_house_construction_year(houses_info, house_number)
+    return int(YEAR_TO_SUBTRACT_FROM - get_house_construction_year(houses_info, house_number))

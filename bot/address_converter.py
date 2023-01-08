@@ -41,7 +41,11 @@ def parse_respond(api_respond: Optional[Dict[str, Any]]) -> YandexAPIData:
     matches = [
         geo_object for geo_object in geo_objects
         # Можем получить соответствие, но это может быть обобщение до координат города, а не дома.
-        if geo_object['GeoObject']['metaDataProperty']['GeocoderMetaData']['precision'] == 'exact'
+        if (
+            (geo_object['GeoObject']['metaDataProperty']['GeocoderMetaData']['precision'] == 'exact')
+            and
+            ('Санкт-Петербург' in geo_object['GeoObject']['metaDataProperty']['GeocoderMetaData']['text'])
+        )
     ]
 
     if not matches:

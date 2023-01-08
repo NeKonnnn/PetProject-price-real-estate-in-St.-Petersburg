@@ -38,7 +38,7 @@ text_output_for_command = {
 feature_names_for_message = {
     'address': 'Адрес квартиры',
     'rooms': 'Количество комнат',
-    'total_area': 'Площадь квартиры',
+    'total_area': 'Площадь квартиры (м2)',
     'stage': 'Этаж',
     'elevator': 'Есть ли лифт?',
     'largage_elevator': 'Есть ли грузовой лифт?',
@@ -47,22 +47,24 @@ feature_names_for_message = {
 
 def format_user_features(data: Dict) -> str:
     """Форматирует собранные фичи в удобочитаемую строку."""
-    features_repr = '🏢 Вы ввели слудующие данные о квартире:🏢\n'
+    features_repr = '🏢 Вы ввели следующие данные о квартире:🏢\n'
     for feature_name, cyr_name in feature_names_for_message.items():
         value = data[feature_name]
         if feature_name in {'largage_elevator', 'elevator'}:
             value = 'да' if value else 'нет'
         if feature_name == 'rooms':
             value = value if value else '0 (студия)'
-        features_repr += f'{cyr_name} -> <b>{value}</b>\n'
+        features_repr += f"{cyr_name} -> <b>{str(value).replace('.', ',')}</b>\n"
     return features_repr
 
 
 def format_model_response(model_response: Dict[str, float]) -> str:
     """Форматирует ответ API модели в удобочитаемую строку."""
+    m2_price = f"{model_response['m2_price'] / 1_000:.1f}".replace('.', ',')
+    total_price = f"{model_response['total_price'] / 1_000_000:.1f}".replace('.', ',')
     return f"""\n⭐️Результаты оценки⭐️
-Квадратный метр ≈ 😱<b>{model_response['m2_price'] / 1_000:.1f} т.р./м2</b>😱
-Общая стоимость ≈ 💲<b>{model_response['total_price'] / 1_000_000:.1f} млн. рублей</b>💲.
+Квадратный метр ≈ 😱<b>{m2_price} т.р./м2</b>😱
+Общая стоимость ≈ 💲<b>{total_price} млн. рублей</b>💲.
 
 👍Спасибо за использование нашего бота!👍
 Хочешь еще? - нажми ➡️ /estimate)
